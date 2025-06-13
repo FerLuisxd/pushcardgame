@@ -338,7 +338,7 @@
         const COLORS = ['red', 'blue', 'green', 'yellow', 'purple'];
         const VALUES = [1, 2, 3, 4, 5, 6];
         const NUM_COPIES_PER_CARD = 3;
-        const NUM_ROLL_CARDS = 18;
+        const NUM_ROLL_CARDS = 50;
         const MAX_COLUMNS = 3;
 
         // --- DOM Elements ---
@@ -475,7 +475,7 @@
                     setTimeout(() => {
                         const nextPlayerIndex = (this.currentPlayerIndex + 1) % this.players.length;
                         if (this.turnColumns.length > 0) {
-                            this.promptPlayerToBank(nextPlayerIndex, this.bankingColumns.filter(col => this.turnColumns.includes(col)));
+                            this.promptPlayerToBank(nextPlayerIndex, this.bankingColumns);
                         } else {
                             this.endTurn();
                         }
@@ -560,6 +560,7 @@
                 if (columnIndex !== -1) {
                     this.turnColumns.splice(columnIndex, 1);
                 }
+                this.bankingColumns = [...this.turnColumns];
                 const remainingColumns = availableColumns.filter(c => c !== chosenColumn);
                 
                 // If there's a roll card and this is the current player
@@ -651,6 +652,8 @@
                 columnsToShow.forEach((columnData, index) => {
                     const columnDiv = document.createElement('div');
                     columnDiv.className = 'column';
+
+                    console.log('in columns to show', this.gameState, columnsToShow)
                     
                     // Logic for card placement highlighting
                     if (this.gameState === 'placing_card' && this._canPlaceInColumn(cardToPlace, columnData)) {
