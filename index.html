@@ -335,11 +335,12 @@
 
 
     <script>
+        // const COLORS = ['red', 'blue'];
         const COLORS = ['red', 'blue', 'green', 'yellow', 'purple'];
         const VALUES = [1, 2, 3, 4, 5, 6];
         const NUM_COPIES_PER_CARD = 3;
-        // const NUM_ROLL_CARDS = 18;
-        const NUM_ROLL_CARDS = 60;
+        const NUM_ROLL_CARDS = 18;
+        // const NUM_ROLL_CARDS = 60;
         const MAX_COLUMNS = 3;
 
         // --- DOM Elements ---
@@ -370,7 +371,6 @@
                 this.deck = this._createDeck();
                 this.currentPlayerIndex = 0;
                 this.turnColumns = [];
-                this.bankingColumns = [];
                 this.isGameOver = false;
                 this.gameState = 'turn_start'; // 'turn_start', 'placing_card', 'banking', 'game_over', 'rolling_dice'
                 this.selectedRollColumn = null; // To track which column with a roll card was selected
@@ -416,7 +416,6 @@
                 }
                 
                 const card = this.deck.pop();
-                
                 if (this._isBust(card)) {
                     this.handleBust();
                     return;
@@ -431,9 +430,7 @@
                     return;
                 }
                 this.gameState = 'banking';
-                // Create a copy of turnColumns for banking to ensure original array isn't modified unexpectedly
-                this.bankingColumns = [...this.turnColumns];
-                this.promptPlayerToBank(this.currentPlayerIndex, this.bankingColumns);
+                this.promptPlayerToBank(this.currentPlayerIndex, this.turnColumns);
             }
 
             endTurn() {
@@ -443,7 +440,7 @@
                 }
                 this.currentPlayerIndex = (this.currentPlayerIndex + 1) % this.players.length;
                 this.turnColumns = [];
-                this.bankingColumns = [];
+                this.isBurst = false
                 this.startTurn();
             }
 
@@ -454,7 +451,7 @@
                 
                 // Remove the rolled color cards from the player's bank
                 // const player = this.getCurrentPlayer();
-                const player = this.players[this.temporalDiceTurnPlayer];
+                const player = this.players[this.temporalDiceTurnPlayerIndex];
                 const removedCount = player.bank.filter(c => c.color === rolledColor).length;
                 player.bank = player.bank.filter(c => c.color !== rolledColor);
                 
@@ -462,6 +459,7 @@
                 this.selectedRollColumn = null;
                 this.gameState = 'banking';
                 dom.rollButton.style.display = 'none';
+                this.isBurst = false;
                 
                 // Force UI update to show the column has been removed
                 this.updateUI();
@@ -475,14 +473,18 @@
                     
                     // Continue with banking for the next player if there are remaining columns
                     setTimeout(() => {
-                        const nextPlayerIndex = (this.currentPlayerIndex + 1) % this.players.length;
-                        if (this.turnColumns.length > 0) {
-                            this.promptPlayerToBank(nextPlayerIndex, this.bankingColumns);
-                        } else {
-                            this.endTurn();
-                        }
+                        const nextPlayerIndex = (this.temporalDiceTurnPlayerIndex + 1) % this.players.length;
+                        this.nextPlayerPickUp(nextPlayerIndex)
                     }, 1000);
                 }, 1500);
+            }
+
+            nextPlayerPickUp(nextPlayerIndex){
+                if(nextPlayerIndex === this.currentPlayerIndex || this.turnColumns.length === 0){
+                    this.endTurn(); // Full cycle complete or no columns left
+                } else {
+                    this.promptPlayerToBank(nextPlayerIndex, this.turnColumns);
+                }
             }
             
             _isBust(card) {
@@ -492,18 +494,10 @@
             }
 
             handleBust() {
-                this.displayMessage(`<span class="message-highlight">BUST!</span> You lost the cards from this turn.`);
+                this.isBurst = true
                 // Penalty roll
-                const rolledColor = COLORS[Math.floor(Math.random() * COLORS.length)];
-                
-                setTimeout(() => { // Add a delay for dramatic effect
-                    this.displayMessage(`Penalty! All banked <span style="color:${rolledColor};">${rolledColor}</span> cards are lost.`);
-                    const player = this.getCurrentPlayer();
-                    player.bank = player.bank.filter(c => c.color !== rolledColor);
-                    this.updateUI(); // Update immediately to show lost cards
-                }, 2000);
-                
-                setTimeout(() => this.endTurn(), 4000);
+                this.rollDiceEvent(this.currentPlayerIndex, this.selectedRollColumn)
+                // setTimeout(() => this.endTurn(), 4000);
             }
 
             _canPlaceInColumn(card, column) {
@@ -531,9 +525,11 @@
             
             // --- Banking Logic ---
             promptPlayerToBank(playerIndex, availableColumns) {
+                console.log('in prompt player to bank', playerIndex, availableColumns)
                 if (availableColumns.length === 0) {
                     // All columns taken, move to next player in turn cycle
                     const nextPlayerInCycle = (playerIndex + 1) % this.players.length;
+                    console.log('should endTurn?',nextPlayerInCycle, playerIndex, this.currentPlayerIndex)
                     if (nextPlayerInCycle === this.currentPlayerIndex) {
                         this.endTurn(); // Full cycle complete
                     } else {
@@ -550,42 +546,47 @@
             }
             
             playerBanksColumn(playerIndex, chosenColumn, availableColumns) {
-                console.log('banking column', playerIndex, chosenColumn, availableColumns)
                 // First, add all non-roll cards to the player's bank
                 const nonRollCards = chosenColumn.filter(card => card.type !== 'roll');
                 this.players[playerIndex].bank.push(...nonRollCards);
                 
                 // Check if the column contains a roll card
                 const hasRollCard = chosenColumn.some(card => card.type === 'roll');
-                console.log('hasRollCard', nonRollCards, 'has roll?', hasRollCard, 'all cards', chosenColumn)
                 // Remove the column from turnColumns and available columns
                 const columnIndex = this.turnColumns.indexOf(chosenColumn);
                 if (columnIndex !== -1) {
                     this.turnColumns.splice(columnIndex, 1);
                 }
-                this.bankingColumns = [...this.turnColumns];
                 const remainingColumns = availableColumns.filter(c => c !== chosenColumn);
                 
                 // If there's a roll card and this is the current player
                 if (hasRollCard) {
-                    this.temporalDiceTurnPlayer = playerIndex
-                    this.selectedRollColumn = chosenColumn;
-                    this.gameState = 'rolling_dice';
-                    this.displayMessage(`You collected a dice card! Click the Roll Dice button to roll!`);
-                    dom.rollButton.style.display = 'block';
-                    dom.pushButton.disabled = true;
-                    dom.stopButton.disabled = true;
-                    this.updateUI();
+                    this.rollDiceEvent(playerIndex, chosenColumn)
                     return;
                 }
                 
                 const nextPlayerInCycle = (playerIndex + 1) % this.players.length;
-
                 if(nextPlayerInCycle === this.currentPlayerIndex || remainingColumns.length === 0){
                     this.endTurn(); // Full cycle complete or no columns left
                 } else {
                     this.promptPlayerToBank(nextPlayerInCycle, remainingColumns);
                 }
+            }
+            
+            rollDiceEvent(playerIndex, chosenColumn){
+                this.temporalDiceTurnPlayerIndex = playerIndex
+                this.selectedRollColumn = chosenColumn;
+                this.gameState = 'rolling_dice';
+                if(!this.isBurst){
+                this.displayMessage(`You collected a dice card! Click the Roll Dice button to roll!`);
+                }
+                else{
+                    this.displayMessage(`<span class="message-highlight">BUST!</span> You lost the cards from this turn.`);
+                }
+                dom.rollButton.style.display = 'block';
+                dom.pushButton.disabled = true;
+                dom.stopButton.disabled = true;
+                this.updateUI();
             }
 
             // --- Game State & UI ---
@@ -649,10 +650,10 @@
                 dom.turnColumns.innerHTML = '';
                 
                 // Determine which columns to show based on game state
-                const columnsToShow = this.gameState === 'banking' ? 
-                    (bankableColumns || this.bankingColumns) : 
-                    this.turnColumns;
-                
+                // const columnsToShow = this.gameState === 'banking' ? 
+                //     (bankableColumns) : 
+                //     this.turnColumns;
+                const columnsToShow = bankableColumns || this.turnColumns
                 columnsToShow.forEach((columnData, index) => {
                     const columnDiv = document.createElement('div');
                     columnDiv.className = 'column';
