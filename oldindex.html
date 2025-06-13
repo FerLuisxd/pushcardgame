@@ -1,0 +1,1321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Push - The Card Game</title>
+    <style>
+        /* --- General Setup & Fonts --- */
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap');
+
+        :root {
+            --c-red: #d93e3e;
+            --c-blue: #4a7dcc;
+            --c-green: #59a659;
+            --c-yellow: #e6c54c;
+            --c-purple: #9d59a6;
+            --c-grey: #a0a0a0; /* For Roll cards */
+            --c-indigo: #4B0082; /* For Switch cards */
+            --c-dark: #2c2c2c;
+            --c-light: #f0f0f0;
+            --c-bg: #333;
+        }
+
+        body {
+            font-family: 'Poppins', sans-serif;
+            background-color: var(--c-bg);
+            color: var(--c-light);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 100vh;
+            box-sizing: border-box;
+            overflow-x: hidden;
+        }
+
+        /* --- Main Game Layout --- */
+        #game-board {
+            display: grid;
+            grid-template-areas:
+                "players players"
+                "deck    turn"
+                "actions message";
+            grid-template-columns: 250px 1fr;
+            grid-gap: 20px;
+            width: 100%;
+            max-width: 1200px;
+        }
+
+        #player-info-area { grid-area: players; }
+        #deck-area { grid-area: deck; }
+        #turn-area { grid-area: turn; }
+        #action-area { grid-area: actions; }
+        #message-area { grid-area: message; }
+
+        .game-section {
+            background-color: rgba(0,0,0,0.2);
+            border-radius: 10px;
+            padding: 15px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+        }
+
+        /* --- Player Info Section --- */
+        #player-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .player-display {
+            background: var(--c-dark);
+            padding: 10px 15px;
+            border-radius: 8px;
+            border-left: 5px solid var(--c-grey);
+            transition: all 0.3s ease;
+        }
+
+        .player-display.active {
+            border-left-color: var(--c-yellow);
+            transform: scale(1.05);
+            box-shadow: 0 0 15px rgba(230, 197, 76, 0.5);
+        }
+
+        .player-name {
+            font-weight: 700;
+            margin-bottom: 5px;
+        }
+        
+        .player-cards {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            margin-top: 5px;
+        }
+
+        .player-bank-cards, .player-collected-cards {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 2px;
+            min-height: 1em;
+        }
+
+        .player-bank-cards .card, .player-collected-cards .card {
+            width: 15px;
+            height: 22px;
+            font-size: 0; /* Hide number on small bank cards */
+            position: relative;
+        }
+
+        .player-collected-cards .card {
+            opacity: 0.7;
+        }
+
+        .mini-value {
+            position: absolute;
+            font-size: 8px;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+        }
+
+        .score {
+            font-weight: bold;
+        }
+
+        .collected-score {
+            color: #AAA;
+            font-size: 0.8em;
+        }
+
+        /* --- Card Graphics --- */
+        .card {
+            width: 60px;
+            height: 90px;
+            border-radius: 6px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 2em;
+            font-weight: 700;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            position: relative;
+        }
+
+        .card.red    { background: var(--c-red); color: white; }
+        .card.blue   { background: var(--c-blue); color: white; }
+        .card.green  { background: var(--c-green); color: white; }
+        .card.yellow { background: var(--c-yellow); color: var(--c-dark); }
+        .card.purple { background: var(--c-purple); color: white; }
+        .card.grey   { background: var(--c-grey); color: var(--c-dark); font-size: 2.5em; } /* Roll card */
+        .card.indigo { background: var(--c-indigo); color: white; } /* Switch card */
+
+        .card-back {
+            background: linear-gradient(135deg, #555, #444);
+            border: 2px solid #666;
+        }
+        
+        /* Burst animation */
+        @keyframes burst-animation {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.5); opacity: 0.7; }
+            100% { transform: scale(0); opacity: 0; }
+        }
+        
+        .bursting {
+            animation: burst-animation 1s forwards;
+        }
+        
+        /* Burst background effect */
+        @keyframes burst-background {
+            0% { background-color: rgba(255, 0, 0, 0); }
+            25% { background-color: rgba(255, 0, 0, 0.3); }
+            50% { background-color: rgba(255, 0, 0, 0.5); }
+            75% { background-color: rgba(255, 0, 0, 0.3); }
+            100% { background-color: rgba(255, 0, 0, 0); }
+        }
+        
+        .burst-background {
+            animation: burst-background 1.5s ease-out;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 100;
+        }
+        
+        /* Auto-burst animation for card that can't be placed */
+        @keyframes auto-burst {
+            0% { transform: scale(1) rotate(0deg); }
+            25% { transform: scale(1.3) rotate(-15deg); }
+            50% { transform: scale(1.5) rotate(10deg); }
+            75% { transform: scale(1.3) rotate(-5deg); }
+            100% { transform: scale(0) rotate(0deg); }
+        }
+        
+        .auto-bursting {
+            animation: auto-burst 1.2s forwards;
+        }
+        
+        /* Cannot place visual indicator */
+        @keyframes cannot-place-pulse {
+            0% { box-shadow: 0 0 5px 2px rgba(255, 0, 0, 0.5); transform: scale(1); }
+            50% { box-shadow: 0 0 15px 5px rgba(255, 0, 0, 0.8); transform: scale(1.05); }
+            100% { box-shadow: 0 0 5px 2px rgba(255, 0, 0, 0.5); transform: scale(1); }
+        }
+        
+        .cannot-place {
+            animation: cannot-place-pulse 1s infinite;
+            border: 2px solid red !important;
+        }
+        
+        /* --- Deck & Turn Area --- */
+        #deck-area {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        #deck-pile { position: relative; }
+        #deck-pile .card { position: absolute; }
+        /* Create a visual stack for the deck */
+        #deck-pile .card:nth-child(1) { transform: translate(0px, 0px); }
+        #deck-pile .card:nth-child(2) { transform: translate(2px, 2px); }
+        #deck-pile .card:nth-child(3) { transform: translate(4px, 4px); }
+
+        #deck-count { font-size: 1.2em; font-weight: 600; }
+        
+        #drawn-card-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-top: 10px;
+            min-height: 100px; /* Space for the drawn card */
+        }
+
+        #turn-columns {
+            display: flex;
+            gap: 20px;
+            min-height: 120px;
+            align-items: flex-start;
+        }
+
+        .column {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            padding: 10px;
+            border-radius: 8px;
+            border: 2px dashed transparent;
+            min-width: 84px;
+            min-height: 114px;
+            transition: all 0.2s ease;
+            position: relative;
+        }
+
+        .column.selectable {
+            border-color: var(--c-yellow);
+            background-color: rgba(230, 197, 76, 0.1);
+            cursor: pointer;
+        }
+        .column.selectable:hover {
+            background-color: rgba(230, 197, 76, 0.2);
+            transform: translateY(-5px);
+            box-shadow: 0 5px 15px rgba(230, 197, 76, 0.3);
+        }
+        
+        .choosing-phase .column.selectable {
+            animation: pulse-border 1.5s infinite;
+        }
+        
+        @keyframes pulse-border {
+            0% { border-color: var(--c-yellow); border-width: 2px; }
+            50% { border-color: var(--c-blue); border-width: 3px; }
+            100% { border-color: var(--c-yellow); border-width: 2px; }
+        }
+        
+        .place-here-button, .create-new-stack-button, .choose-stack-button {
+            margin-top: 5px;
+            padding: 8px 10px;
+            background-color: var(--c-green);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.9em;
+            width: 100%;
+        }
+        .choose-stack-button { 
+            background-color: var(--c-blue); 
+            font-weight: bold;
+            padding: 10px;
+            font-size: 1em;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+            transition: all 0.2s ease;
+        }
+        .choose-stack-button:hover {
+            background-color: #5a8fdd;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.4);
+        }
+
+        /* --- Action & Message Area --- */
+        #action-area {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        .action-button {
+            padding: 15px 20px;
+            font-size: 1.2em;
+            font-weight: 700;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            color: var(--c-dark);
+        }
+        
+        .action-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        #push-button { background-color: var(--c-green); }
+        #push-button:not(:disabled):hover { background-color: #6bc96b; }
+        
+        #stop-button { background-color: var(--c-red); }
+        #stop-button:not(:disabled):hover { background-color: #e35757; }
+        
+        #roll-dice-button { 
+            background-color: var(--c-yellow); 
+            color: var(--c-dark); 
+            display: none; 
+            font-size: 1.4em;
+            animation: pulse 1.5s infinite;
+        }
+        #roll-dice-button:not(:disabled):hover { 
+            background-color: #f3d66a; 
+            transform: scale(1.05);
+        }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+        
+        #message-box {
+            font-size: 1.3em;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 20px;
+        }
+        
+        .message-highlight { color: var(--c-yellow); }
+
+        /* --- Modal for Setup & Game Over --- */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .modal-content {
+            background: var(--c-light);
+            color: var(--c-dark);
+            padding: 30px;
+            border-radius: 15px;
+            width: 90%;
+            max-width: 500px;
+            text-align: center;
+        }
+
+        .modal-content h1 {
+            margin-top: 0;
+        }
+        
+        .modal-content input {
+            display: block;
+            width: calc(100% - 20px);
+            padding: 10px;
+            margin: 10px 0;
+            border: 2px solid #ccc;
+            border-radius: 5px;
+        }
+        
+        #player-inputs { margin-bottom: 20px; }
+        
+        .modal-button {
+            padding: 12px 25px;
+            font-size: 1.1em;
+            font-weight: 600;
+            border-radius: 8px;
+            cursor: pointer;
+            border: none;
+            background: var(--c-blue);
+            color: white;
+            margin: 5px;
+        }
+        
+        #final-scores li {
+            list-style-type: none;
+            font-size: 1.2em;
+            margin: 10px 0;
+        }
+        #final-scores { padding: 0; }
+
+        /* Room Selection */
+        #room-setup-modal {
+            text-align: center;
+        }
+
+        #room-input {
+            margin-bottom: 20px;
+            padding: 12px;
+            font-size: 1.2em;
+            width: 80%;
+            border-radius: 8px;
+            border: 2px solid #ccc;
+        }
+
+        #room-info {
+            margin-top: 15px;
+            font-weight: bold;
+            min-height: 20px;
+        }
+
+        #room-players {
+            margin-top: 10px;
+            text-align: left;
+            padding-left: 20px;
+        }
+
+        .room-action-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-board" style="display: none;">
+        <div id="player-info-area" class="game-section">
+            <div id="player-list"></div>
+        </div>
+
+        <div id="deck-area" class="game-section">
+            <div id="deck-pile">
+                <div class="card card-back"></div>
+                <div class="card card-back"></div>
+                <div class="card card-back"></div>
+            </div>
+            <div id="deck-count"></div>
+            <div id="drawn-card-container"></div>
+        </div>
+
+        <div id="turn-area" class="game-section">
+            <div id="turn-columns"></div>
+        </div>
+
+        <div id="action-area">
+            <button id="push-button" class="action-button">Push!</button>
+            <button id="stop-button" class="action-button">Stop</button>
+            <button id="roll-dice-button" class="action-button" disabled>Roll Dice</button>
+        </div>
+
+        <div id="message-area" class="game-section">
+            <div id="message-box">Welcome to Push!</div>
+        </div>
+    </div>
+
+    <!-- Room Selection Modal -->
+    <div id="room-setup-modal" class="modal-overlay">
+        <div class="modal-content">
+            <h1>Welcome to Push!</h1>
+            <p>Enter a room code to join or create a game</p>
+            <input type="text" id="room-input" placeholder="Enter room code (e.g., game123)" value="game123">
+            <div id="room-info">Waiting for other players...</div>
+            <div id="room-players"></div>
+            <div class="room-action-buttons">
+                <button id="join-room-button" class="modal-button">Join Room</button>
+                <button id="start-game-button" class="modal-button" disabled>Start Game</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Player Setup Modal (now hidden by default) -->
+    <div id="setup-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content">
+            <h1>Enter Player Names</h1>
+            <div id="player-count-selector">
+                <label for="num-players">Number of Players: </label>
+                <select id="num-players">
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                    <option value="5">5</option>
+                    <option value="6">6</option>
+                </select>
+            </div>
+            <div id="player-inputs"></div>
+            <button id="confirm-players-button" class="modal-button">Start Game</button>
+        </div>
+    </div>
+
+    <div id="game-over-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content">
+            <h1>Game Over!</h1>
+            <ul id="final-scores"></ul>
+            <button id="play-again-button" class="modal-button">Play Again</button>
+        </div>
+    </div>
+
+    <!-- Explicitly loading Socket.IO from CDN as a backup -->
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script>
+        const COLORS = ['red', 'blue', 'green', 'yellow', 'purple'];
+        const VALUES = [1, 2, 3, 4, 5, 6];
+        const MAX_COLUMNS = 3;
+
+        const dom = {
+            gameBoard: document.getElementById('game-board'),
+            playerList: document.getElementById('player-list'),
+            deckCount: document.getElementById('deck-count'),
+            turnColumns: document.getElementById('turn-columns'),
+            pushButton: document.getElementById('push-button'),
+            stopButton: document.getElementById('stop-button'),
+            rollDiceButton: document.getElementById('roll-dice-button'),
+            messageBox: document.getElementById('message-box'),
+            drawnCardContainer: document.getElementById('drawn-card-container'),
+            roomSetupModal: document.getElementById('room-setup-modal'),
+            roomInput: document.getElementById('room-input'),
+            roomInfo: document.getElementById('room-info'),
+            roomPlayers: document.getElementById('room-players'),
+            joinRoomButton: document.getElementById('join-room-button'),
+            startGameButton: document.getElementById('start-game-button'),
+            setupModal: document.getElementById('setup-modal'),
+            numPlayersSelect: document.getElementById('num-players'),
+            playerInputs: document.getElementById('player-inputs'),
+            confirmPlayersButton: document.getElementById('confirm-players-button'),
+            gameOverModal: document.getElementById('game-over-modal'),
+            finalScores: document.getElementById('final-scores'),
+            playAgainButton: document.getElementById('play-again-button'),
+        };
+
+        let socket;
+        let currentGameState = null;
+        let myPlayerId = null;
+        let roomId = '';
+        let playerName = '';
+        let connectedPlayers = [];
+        let currentPhase = null;
+        let currentPlayerId = null;
+        let currentStacks = null;
+        let drawnCardForPlacement = null;
+
+        function getCardClass(card) {
+            if (card.type === 'roll') return 'grey';
+            if (card.type === 'switch') return 'indigo';
+            return card.color;
+        }
+
+        function getCardValue(card) {
+            if (card.type === 'roll') return '🎲';
+            if (card.type === 'switch') return '🔄';
+            return card.value;
+        }
+
+        function updateUI(gameState) {
+            if (!gameState) return; // Guard against null gameState
+            
+            currentGameState = gameState;
+            const { players, deckCount, currentStacks, currentPlayerId, currentPhase, lastRolledColor, drawnCardForPlacement } = gameState;
+            
+            console.log("Updating UI with game phase:", currentPhase);
+            console.log("Current stacks:", currentStacks);
+            
+            dom.playerList.innerHTML = '';
+            players.forEach(p => {
+                const playerDiv = document.createElement('div');
+                playerDiv.className = 'player-display';
+                if (p.id === currentPlayerId) {
+                    playerDiv.classList.add('active');
+                }
+
+                // Calculate score from banked cards
+                const score = p.bankedCards.reduce((sum, card) => sum + (card.value || 0), 0);
+                
+                // Calculate potential score from collected cards
+                const collectedScore = p.collectedCards.reduce((sum, card) => sum + (card.value || 0), 0);
+                
+                playerDiv.innerHTML = `
+                    <div class="player-name">${p.name}</div>
+                    <div>Score: <span class="score">${score}</span>${collectedScore > 0 ? ` <span class="collected-score">(+${collectedScore})</span>` : ''}</div>
+                    <div class="player-cards">
+                        <div class="player-bank-cards">
+                            ${p.bankedCards.map(card => `<div class="card ${getCardClass(card)}" title="${card.type === 'number' ? card.value : card.type}">${card.type === 'number' ? `<span class="mini-value">${card.value}</span>` : ''}</div>`).join('')}
+                        </div>
+                        <div class="player-collected-cards">
+                            ${p.collectedCards.map(card => `<div class="card ${getCardClass(card)}" title="${card.type === 'number' ? card.value : card.type}">${card.type === 'number' ? `<span class="mini-value">${card.value}</span>` : ''}</div>`).join('')}
+                        </div>
+                    </div>
+                `;
+                dom.playerList.appendChild(playerDiv);
+            });
+
+            dom.deckCount.textContent = `${deckCount} cards left`;
+
+            dom.drawnCardContainer.innerHTML = '';
+            if (drawnCardForPlacement) {
+                const cardDiv = document.createElement('div');
+                cardDiv.className = `card ${getCardClass(drawnCardForPlacement)}`;
+                cardDiv.textContent = getCardValue(drawnCardForPlacement);
+                dom.drawnCardContainer.appendChild(cardDiv);
+                
+                // Check if this card can be placed anywhere during the placing phase
+                if (currentPhase === 'placing_card' && currentPlayerId === myPlayerId) {
+                    // This will be checked later in the code, just set up the card for potential visual indicators
+                    cardDiv.setAttribute('data-drawn-card', 'true');
+                }
+            }
+            
+            // Show the correct UI for the current game phase
+            document.querySelectorAll('.phase-container').forEach(container => {
+                container.style.display = 'none';
+            });
+            
+            // Hide all action buttons by default
+            document.getElementById('push-button').style.display = 'none';
+            document.getElementById('stop-button').style.display = 'none';
+            document.getElementById('roll-dice-button').style.display = 'none';
+            
+            // Show phase-specific UI based on current phase
+            if (currentPlayerId === myPlayerId) {
+                if (currentPhase === 'pushing') {
+                    document.getElementById('push-button').style.display = 'block';
+                    document.getElementById('stop-button').style.display = 'block';
+                    addMessage("Your turn! Click 'PUSH!' to draw a card.");
+                } else if (currentPhase === 'rolling_die') {
+                    // Show the roll dice button when it's the player's turn to roll
+                    document.getElementById('roll-dice-button').style.display = 'block';
+                    addMessage("<span class='message-highlight'>Your turn to roll the dice!</span> Click the Roll Dice button.");
+                } else {
+                    document.getElementById('push-button').style.display = 'none';
+                    document.getElementById('stop-button').style.display = 'none';
+                }
+            } else {
+                document.getElementById('push-button').style.display = 'none';
+                document.getElementById('stop-button').style.display = 'none';
+                if (currentPhase === 'pushing') {
+                    const currentPlayer = players.find(p => p.id === currentPlayerId);
+                    if (currentPlayer) {
+                        addMessage(`${currentPlayer.name}'s turn to push!`);
+                    }
+                } else if (currentPhase === 'rolling_die') {
+                    const currentPlayer = players.find(p => p.id === currentPlayerId);
+                    if (currentPlayer) {
+                        addMessage(`${currentPlayer.name} is rolling the dice...`);
+                    }
+                }
+            }
+            
+            // Update turn columns
+            if (currentStacks) {
+                dom.turnColumns.innerHTML = '';
+                currentStacks.forEach((columnData, index) => {
+                    const columnDiv = document.createElement('div');
+                    columnDiv.className = 'column';
+                    
+                    if (currentPhase === 'placing_card' && currentPlayerId === myPlayerId && drawnCardForPlacement) {
+                        const canPlace = !columnData.some(c => c.color === drawnCardForPlacement.color) &&
+                                         !columnData.some(c => c.value === drawnCardForPlacement.value);
+                        if (canPlace) {
+                            columnDiv.classList.add('selectable');
+                            columnDiv.innerHTML += '<button class="place-here-button">Place Here</button>';
+                            columnDiv.querySelector('.place-here-button').onclick = () => socket.emit('placeCard', { stackIndex: index });
+                        }
+                    }
+                    if (currentPhase === 'choosing_stack_distribution' && currentPlayerId === myPlayerId) {
+                        columnDiv.classList.add('selectable');
+                        columnDiv.innerHTML += '<button class="choose-stack-button">Choose This Stack</button>';
+                        columnDiv.querySelector('.choose-stack-button').onclick = () => socket.emit('chooseStack', { stackIndex: index });
+                    }
+
+                    columnData.forEach(card => {
+                        const cardDiv = document.createElement('div');
+                        cardDiv.className = `card ${getCardClass(card)}`;
+                        cardDiv.textContent = getCardValue(card);
+                        // Add data attribute to mark roll cards for visual identification
+                        if (card.type === 'roll') {
+                            cardDiv.setAttribute('data-roll-card', 'true');
+                        }
+                        columnDiv.appendChild(cardDiv);
+                    });
+                    dom.turnColumns.appendChild(columnDiv);
+                });
+                
+                if (currentPhase === 'placing_card' && currentPlayerId === myPlayerId && drawnCardForPlacement && currentStacks.length < MAX_COLUMNS) {
+                    const newColumnDiv = document.createElement('div');
+                    newColumnDiv.className = 'column selectable';
+                    newColumnDiv.innerHTML = '<button class="create-new-stack-button">Create New Stack</button>';
+                    newColumnDiv.querySelector('.create-new-stack-button').onclick = () => socket.emit('placeCard', { stackIndex: currentStacks.length });
+                    dom.turnColumns.appendChild(newColumnDiv);
+                }
+            }
+            
+            // Check if the current player can place the drawn card anywhere
+            // This is for UI feedback only - the server already checks this automatically
+            if (currentPhase === 'placing_card' && currentPlayerId === myPlayerId && drawnCardForPlacement) {
+                console.log("Checking if card can be placed anywhere...");
+                console.log("Current card:", drawnCardForPlacement);
+                console.log("Current stacks:", currentStacks);
+                
+                let canPlaceAnywhere = false;
+                
+                // Check if the card can be placed in any existing stack
+                const selectableStacks = document.querySelectorAll('.column.selectable');
+                console.log("Selectable stacks count:", selectableStacks.length);
+                
+                if (selectableStacks.length > 0) {
+                    canPlaceAnywhere = true;
+                }
+                
+                // Check if a new stack can be created
+                const canCreateNewStack = currentStacks.length < MAX_COLUMNS;
+                console.log("Can create new stack:", canCreateNewStack, "Current stacks:", currentStacks.length);
+                
+                if (canCreateNewStack) {
+                    canPlaceAnywhere = true;
+                }
+                
+                console.log("Can place anywhere:", canPlaceAnywhere);
+                
+                // If the card can't be placed anywhere, show a message and auto-trigger burst
+                if (!canPlaceAnywhere) {
+                    console.log("Card cannot be placed anywhere - auto-triggering burst");
+                    
+                    // Add a message to inform the player
+                    const message = document.createElement('div');
+                    message.className = 'cannot-place-message';
+                    message.textContent = 'This card cannot be placed anywhere! Auto-triggering bust...';
+                    message.style.color = 'red';
+                    message.style.fontWeight = 'bold';
+                    message.style.textAlign = 'center';
+                    message.style.margin = '10px 0';
+                    dom.turnColumns.appendChild(message);
+                    
+                    // Add a visual indicator to the drawn card
+                    const drawnCard = document.querySelector('[data-drawn-card="true"]');
+                    if (drawnCard) {
+                        drawnCard.classList.add('cannot-place');
+                    }
+                    
+                    // Wait a short moment before triggering the burst
+                    setTimeout(() => {
+                        if (socket && currentGameState && myPlayerId === currentPlayerId) {
+                            console.log("Auto-triggering cannotPlaceCard event");
+                            
+                            // Add burst background effect
+                            const burstEffect = document.createElement('div');
+                            burstEffect.className = 'burst-background';
+                            document.body.appendChild(burstEffect);
+                            
+                            // Remove burst effect after animation completes
+                            setTimeout(() => {
+                                burstEffect.remove();
+                            }, 1500);
+                            
+                            // Add auto-burst animation to the card
+                            const drawnCard = document.querySelector('[data-drawn-card="true"]');
+                            if (drawnCard) {
+                                drawnCard.classList.remove('cannot-place');
+                                drawnCard.classList.add('auto-bursting');
+                            }
+                            
+                            // Send the event to the server
+                            socket.emit('cannotPlaceCard');
+                        }
+                    }, 1500);
+                }
+            }
+            
+            // Show columns as selectable when choosing a stack (either initial or next player)
+            if (currentPlayerId === myPlayerId && (currentPhase === 'choosing_stack_distribution' || currentPhase === 'next_player_choosing')) {
+                // Add a class to the turn columns container to enable special styling
+                dom.turnColumns.classList.add('choosing-phase');
+                
+                console.log("Enabling stack selection for player:", myPlayerId);
+                console.log("Current stacks:", currentStacks);
+                
+                document.querySelectorAll('.column').forEach((column, index) => {
+                    column.classList.add('selectable');
+                    console.log(`Making stack ${index} selectable`);
+                    
+                    // Remove any existing choose buttons
+                    const existingButton = column.querySelector('.choose-stack-button');
+                    if (existingButton) {
+                        existingButton.remove();
+                    }
+                    
+                    const button = document.createElement('button');
+                    button.className = 'choose-stack-button';
+                    
+                    // Check if stack contains a Roll card for visual feedback
+                    const hasRollCard = currentStacks[index].some(card => card.type === 'roll');
+                    if (hasRollCard) {
+                        button.textContent = 'Choose & Roll Dice';
+                        button.style.backgroundColor = '#e6c54c'; // Yellow color
+                        button.style.color = '#2c2c2c';
+                    } else {
+                        button.textContent = 'Choose This Stack';
+                    }
+                    
+                    button.onclick = () => {
+                        console.log(`Clicked stack ${index}`);
+                        socket.emit('chooseStack', { stackIndex: index });
+                    };
+                    column.appendChild(button);
+                });
+            } else {
+                dom.turnColumns.classList.remove('choosing-phase');
+                console.log("Stack selection disabled for player:", myPlayerId);
+            }
+            
+            // Display last rolled color if available
+            if (lastRolledColor) {
+                const diceResultDiv = document.createElement('div');
+                diceResultDiv.className = 'dice-result';
+                diceResultDiv.style.backgroundColor = lastRolledColor;
+                diceResultDiv.style.width = '60px';
+                diceResultDiv.style.height = '60px';
+                diceResultDiv.style.borderRadius = '10px';
+                diceResultDiv.style.margin = '15px auto';
+                diceResultDiv.style.border = '3px solid white';
+                diceResultDiv.style.boxShadow = '0 4px 8px rgba(0,0,0,0.5)';
+                
+                if (lastRolledColor === 'black') {
+                    diceResultDiv.style.color = 'white';
+                } else {
+                    diceResultDiv.style.color = lastRolledColor === 'yellow' ? 'black' : 'white';
+                }
+                
+                diceResultDiv.textContent = lastRolledColor.toUpperCase();
+                diceResultDiv.style.display = 'flex';
+                diceResultDiv.style.justifyContent = 'center';
+                diceResultDiv.style.alignItems = 'center';
+                diceResultDiv.style.fontWeight = 'bold';
+                diceResultDiv.style.fontSize = '1.2em';
+                diceResultDiv.style.fontFamily = 'Arial, sans-serif';
+                
+                dom.drawnCardContainer.appendChild(diceResultDiv);
+            }
+
+            // Handle the roll dice button
+            const isMyTurn = (currentPlayerId === myPlayerId);
+            dom.pushButton.disabled = !(isMyTurn && currentPhase === 'pushing');
+            dom.stopButton.disabled = !(isMyTurn && currentPhase === 'pushing');
+            
+            // Show/hide the push button based on game phase
+            if (isMyTurn && currentPhase === 'pushing') {
+                dom.pushButton.style.display = 'block';
+                dom.stopButton.style.display = 'block';
+            } else {
+                dom.pushButton.style.display = 'none';
+                dom.stopButton.style.display = 'none';
+            }
+            
+            if (currentPhase !== 'placing_card' || !currentPlayerId === myPlayerId) {
+                document.querySelectorAll('.place-here-button').forEach(btn => btn.remove());
+                document.querySelectorAll('.create-new-stack-button').forEach(btn => btn.remove());
+            }
+        }
+
+        function displayMessage(message) {
+            dom.messageBox.innerHTML = message;
+        }
+        
+        function addMessage(message) {
+            displayMessage(message);
+        }
+        
+        function updateRoomPlayers(players) {
+            connectedPlayers = players;
+            dom.roomPlayers.innerHTML = '';
+            players.forEach((player, index) => {
+                const playerItem = document.createElement('div');
+                playerItem.textContent = `Player ${index + 1}: ${player.name}`;
+                dom.roomPlayers.appendChild(playerItem);
+            });
+            
+            // Only the room creator (first player) can start the game
+            if (players.length >= 2 && players[0].id === socket.id) {
+                dom.startGameButton.disabled = false;
+                dom.roomInfo.textContent = `Room ${roomId} - You can start the game now!`;
+            } else if (players.length < 2) {
+                dom.startGameButton.disabled = true;
+                dom.roomInfo.textContent = `Room ${roomId} - Waiting for more players...`;
+            } else {
+                dom.startGameButton.disabled = true;
+                dom.roomInfo.textContent = `Room ${roomId} - Waiting for host to start...`;
+            }
+        }
+        
+        function initRoomSetup() {
+            dom.joinRoomButton.onclick = () => {
+                roomId = dom.roomInput.value.trim();
+                if (!roomId) {
+                    alert('Please enter a room code');
+                    return;
+                }
+                
+                playerName = prompt('Enter your name:', `Player ${Math.floor(Math.random() * 1000)}`);
+                if (!playerName) return;
+                
+                // Connect to socket with room info
+                if (typeof io !== 'undefined') {
+                    socket = io('http://localhost:8080', { 
+                        query: { 
+                            pushGame: true,
+                            roomId: roomId,
+                            playerName: playerName
+                        }
+                    });
+                    
+                    setupSocketListeners();
+                } else {
+                    alert('Error: Socket.IO library not loaded. Please refresh the page.');
+                }
+            };
+            
+            dom.startGameButton.onclick = () => {
+                if (connectedPlayers.length >= 2) {
+                    socket.emit('startGame');
+                } else {
+                    alert('Need at least 2 players to start the game');
+                }
+            };
+        }
+        
+        function setupSocketListeners() {
+            socket.on('connect', () => {
+                console.log('Connected to server with socket ID:', socket.id);
+                dom.roomInfo.textContent = `Connected to room ${roomId}`;
+                
+                socket.emit('joinRoom', { roomId, playerName });
+            });
+            
+            socket.on('roomPlayers', (players) => {
+                console.log('Room players update:', players);
+                updateRoomPlayers(players);
+            });
+            
+            socket.on('gameStarted', () => {
+                dom.roomSetupModal.style.display = 'none';
+                dom.gameBoard.style.display = 'grid';
+                displayMessage(`Game started! Waiting for first turn...`);
+            });
+            
+            socket.on('yourPlayerId', (playerId) => {
+                myPlayerId = playerId;
+                console.log('My Player ID:', myPlayerId);
+            });
+
+            socket.on('gameStateUpdate', (gameState) => {
+                console.log('Game State Update:', gameState);
+                console.log('Current phase from server:', gameState.currentPhase);
+                console.log('Current player from server:', gameState.currentPlayerId);
+                console.log('My player ID:', myPlayerId);
+                console.log('Is my turn:', gameState.currentPlayerId === myPlayerId);
+                console.log('Last rolled color:', gameState.lastRolledColor);
+                
+                updateUI(gameState);
+                
+                if (gameState.currentPlayerId === myPlayerId) {
+                    if (gameState.currentPhase === 'pushing') {
+                        displayMessage(`It\'s <span class="message-highlight">Your</span> turn. Push or Stop?`);
+                    } else if (gameState.currentPhase === 'placing_card') {
+                        displayMessage(`Place the <span class="message-highlight">${getCardClass(gameState.drawnCardForPlacement).toUpperCase()} ${getCardValue(gameState.drawnCardForPlacement)}</span>. Click a valid column or create a new one.`);
+                    } else if (gameState.currentPhase === 'choosing_stack_distribution') {
+                        displayMessage(`It\'s <span class="message-highlight">Your</span> turn to choose a stack to bank.`);
+                    } else if (gameState.currentPhase === 'next_player_choosing') {
+                        displayMessage(`It\'s <span class="message-highlight">Your</span> turn to choose a stack to bank.`);
+                    } else if (gameState.currentPhase === 'rolling_die') {
+                        displayMessage(`<span class="message-highlight">Roll the dice!</span> You chose a stack with a Roll card.`);
+                    }
+                } else {
+                    const activePlayer = gameState.players.find(p => p.id === gameState.currentPlayerId);
+                    if (activePlayer) {
+                        if (gameState.currentPhase === 'choosing_stack_distribution' || gameState.currentPhase === 'next_player_choosing') {
+                            displayMessage(`<span class="message-highlight">${activePlayer.name}</span> is choosing a stack.`);
+                        } else if (gameState.currentPhase === 'rolling_die') {
+                            displayMessage(`<span class="message-highlight">${activePlayer.name}</span> is rolling the dice.`);
+                        } else {
+                            displayMessage(`It\'s <span class="message-highlight">${activePlayer.name}</span>\'s turn.`);
+                        }
+                    }
+                }
+            });
+
+            socket.on('playerBusted', (bustInfo) => {
+                let bustMessage = `<span class="message-highlight">BUST!</span> <span class="message-highlight">${bustInfo.playerName}</span> busted`;
+                
+                if (bustInfo.drawnCard) {
+                    bustMessage += ` with a <span class="message-highlight">${getCardClass(bustInfo.drawnCard).toUpperCase()} ${getCardValue(bustInfo.drawnCard)}</span>`;
+                }
+                
+                bustMessage += ` and rolled <span style="color:${bustInfo.lostColor}; text-transform:uppercase; font-weight:bold;">${bustInfo.lostColor}</span>! `;
+                bustMessage += `They lost all their ${bustInfo.lostColor.toUpperCase()} cards and will be skipped during stack selection.`;
+                
+                displayMessage(bustMessage);
+                
+                // Log the bust event for debugging
+                console.log("Player busted event:", bustInfo);
+                
+                // Add burst background effect
+                const burstEffect = document.createElement('div');
+                burstEffect.className = 'burst-background';
+                document.body.appendChild(burstEffect);
+                
+                // Remove burst effect after animation completes
+                setTimeout(() => {
+                    burstEffect.remove();
+                }, 1500);
+                
+                // Show bust animation on all stacks
+                document.querySelectorAll('.column').forEach((column) => {
+                    column.classList.add('bursting');
+                    setTimeout(() => {
+                        column.classList.remove('bursting');
+                    }, 1000);
+                });
+                
+                // Create a visual of the rolled color
+                const diceResultDiv = document.createElement('div');
+                diceResultDiv.className = 'dice-result';
+                diceResultDiv.style.backgroundColor = bustInfo.lostColor;
+                diceResultDiv.style.width = '80px';
+                diceResultDiv.style.height = '80px';
+                diceResultDiv.style.borderRadius = '10px';
+                diceResultDiv.style.margin = '15px auto';
+                diceResultDiv.style.border = '3px solid white';
+                diceResultDiv.style.boxShadow = '0 4px 10px rgba(0,0,0,0.7)';
+                
+                if (bustInfo.lostColor === 'black') {
+                    diceResultDiv.style.color = 'white';
+                } else {
+                    diceResultDiv.style.color = bustInfo.lostColor === 'yellow' ? 'black' : 'white';
+                }
+                
+                diceResultDiv.textContent = bustInfo.lostColor.toUpperCase();
+                diceResultDiv.style.display = 'flex';
+                diceResultDiv.style.justifyContent = 'center';
+                diceResultDiv.style.alignItems = 'center';
+                diceResultDiv.style.fontWeight = 'bold';
+                diceResultDiv.style.fontSize = '1.3em';
+                diceResultDiv.style.fontFamily = 'Arial, sans-serif';
+                
+                dom.drawnCardContainer.innerHTML = '';
+                dom.drawnCardContainer.appendChild(diceResultDiv);
+            });
+
+            socket.on('playerRolledDie', (rollInfo) => {
+                console.log('Player rolled die event received:', rollInfo);
+                
+                // Clear any rolling messages
+                dom.drawnCardContainer.querySelectorAll('div:not(.card):not(.dice-result)').forEach(el => el.remove());
+                
+                // Display the message
+                displayMessage(`<span class="message-highlight">${rollInfo.playerName}</span> rolled a die... it\'s <span style="color:${rollInfo.rolledColor}; text-transform:uppercase; font-weight:bold;">${rollInfo.rolledColor}</span>!`);
+                
+                // Create a visual of the rolled color
+                const diceResultDiv = document.createElement('div');
+                diceResultDiv.className = 'dice-result';
+                diceResultDiv.style.backgroundColor = rollInfo.rolledColor;
+                diceResultDiv.style.width = '80px';
+                diceResultDiv.style.height = '80px';
+                diceResultDiv.style.borderRadius = '10px';
+                diceResultDiv.style.margin = '15px auto';
+                diceResultDiv.style.border = '3px solid white';
+                diceResultDiv.style.boxShadow = '0 4px 10px rgba(0,0,0,0.7)';
+                
+                if (rollInfo.rolledColor === 'black') {
+                    diceResultDiv.style.color = 'white';
+                } else {
+                    diceResultDiv.style.color = rollInfo.rolledColor === 'yellow' ? 'black' : 'white';
+                }
+                
+                diceResultDiv.textContent = rollInfo.rolledColor.toUpperCase();
+                diceResultDiv.style.display = 'flex';
+                diceResultDiv.style.justifyContent = 'center';
+                diceResultDiv.style.alignItems = 'center';
+                diceResultDiv.style.fontWeight = 'bold';
+                diceResultDiv.style.fontSize = '1.3em';
+                diceResultDiv.style.fontFamily = 'Arial, sans-serif';
+                
+                dom.drawnCardContainer.innerHTML = '';
+                dom.drawnCardContainer.appendChild(diceResultDiv);
+                
+                // Re-enable the roll button in case it's needed again
+                dom.rollDiceButton.disabled = false;
+            });
+            
+            // New event handler for when a player chooses a stack
+            socket.on('playerChoseStack', (info) => {
+                console.log('Player chose stack event:', info);
+                
+                // If the stack has a roll card, highlight it
+                if (info.hasRollCard) {
+                    // Find the stack that was chosen
+                    const columns = document.querySelectorAll('.column');
+                    if (info.stackIndex < columns.length) {
+                        const chosenColumn = columns[info.stackIndex];
+                        
+                        // Find the roll card in the stack and highlight it
+                        const rollCard = chosenColumn.querySelector('[data-roll-card="true"]');
+                        if (rollCard) {
+                            rollCard.style.transform = 'scale(1.2)';
+                            rollCard.style.boxShadow = '0 0 15px yellow';
+                            rollCard.style.zIndex = '10';
+                            
+                            // Add a message about the roll card
+                            const rollMessage = document.createElement('div');
+                            rollMessage.textContent = 'Rolling dice...';
+                            rollMessage.style.position = 'absolute';
+                            rollMessage.style.bottom = '-30px';
+                            rollMessage.style.left = '0';
+                            rollMessage.style.right = '0';
+                            rollMessage.style.textAlign = 'center';
+                            rollMessage.style.color = '#e6c54c';
+                            rollMessage.style.fontWeight = 'bold';
+                            chosenColumn.appendChild(rollMessage);
+                        }
+                    }
+                }
+            });
+
+            socket.on('turnAdvanced', (playerName) => {
+                displayMessage(`<span class="message-highlight">${playerName}</span>\'s turn ended. Next!`);
+                
+                // Clear any remaining animations or effects
+                document.querySelectorAll('.column').forEach((column) => {
+                    column.classList.remove('bursting');
+                });
+                
+                // Clear the dice result display
+                const diceResult = dom.drawnCardContainer.querySelector('.dice-result');
+                if (diceResult) {
+                    diceResult.remove();
+                }
+            });
+
+            socket.on('gameOver', (finalScores) => {
+                dom.gameOverModal.style.display = 'flex';
+                dom.finalScores.innerHTML = '';
+                finalScores.sort((a, b) => b.score - a.score);
+                finalScores.forEach((p, i) => {
+                    const li = document.createElement('li');
+                    li.innerHTML = `${i === 0 ? '🏆' : ''} ${p.name}: <strong>${p.score} points</strong>`;
+                    dom.finalScores.appendChild(li);
+                });
+            });
+
+            socket.on('message', (message) => {
+                console.log("Received message:", message);
+                displayMessage(message);
+                
+                // Check if this is about discarding stacks
+                if (message.includes('Discarded remaining stacks')) {
+                    // Animate the columns to show they're being discarded
+                    document.querySelectorAll('.column').forEach((column) => {
+                        column.classList.add('bursting');
+                    });
+                    
+                    // Clear the columns after animation
+                    setTimeout(() => {
+                        document.querySelectorAll('.column').forEach((column) => {
+                            column.classList.remove('bursting');
+                        });
+                    }, 1000);
+                }
+                
+                // Check if this is about a card that can't be placed anywhere (auto-burst)
+                if (message.includes("drew a card that can't be placed anywhere")) {
+                    // Add burst background effect
+                    const burstEffect = document.createElement('div');
+                    burstEffect.className = 'burst-background';
+                    document.body.appendChild(burstEffect);
+                    
+                    // Remove burst effect after animation completes
+                    setTimeout(() => {
+                        burstEffect.remove();
+                    }, 1500);
+                    
+                    // Animate the drawn card if there is one
+                    const drawnCard = dom.drawnCardContainer.querySelector('.card');
+                    if (drawnCard) {
+                        drawnCard.classList.add('auto-bursting');
+                        
+                        // Remove the card after the animation
+                        setTimeout(() => {
+                            drawnCard.remove();
+                        }, 1200);
+                    }
+                }
+                
+                // Check if this is about a roll card being chosen
+                if (message.includes("chose a stack with a Roll card and rolled")) {
+                    console.log("Roll card was chosen and dice was rolled");
+                    
+                    // Highlight the roll card in the chosen stack
+                    setTimeout(() => {
+                        // The stack is already removed from the UI at this point,
+                        // but we can highlight the dice result
+                        const diceResult = dom.drawnCardContainer.querySelector('.dice-result');
+                        if (diceResult) {
+                            diceResult.style.transform = 'scale(1.2)';
+                            diceResult.style.boxShadow = '0 0 20px rgba(255,255,255,0.7)';
+                            
+                            setTimeout(() => {
+                                diceResult.style.transform = 'scale(1)';
+                                diceResult.style.boxShadow = '0 4px 8px rgba(0,0,0,0.5)';
+                            }, 1000);
+                        }
+                    }, 500);
+                }
+            });
+
+            socket.on('error', (error) => {
+                console.error('Game error:', error);
+                alert('Error: ' + error);
+            });
+
+            socket.on('disconnect', () => {
+                console.log('Disconnected from server');
+                displayMessage('Disconnected from game. Please refresh.');
+            });
+        }
+        
+        dom.pushButton.onclick = () => {
+            if (socket && currentGameState && myPlayerId === currentGameState.currentPlayerId) {
+                socket.emit('pushCard');
+            }
+        };
+        
+        dom.stopButton.onclick = () => {
+            if (socket && currentGameState && myPlayerId === currentGameState.currentPlayerId) {
+                socket.emit('stopPushing');
+            }
+        };
+        
+        dom.rollDiceButton.onclick = () => {
+            console.log("Roll dice button clicked");
+            console.log("Current game state:", currentGameState);
+            console.log("My player ID:", myPlayerId);
+            console.log("Current player ID:", currentGameState?.currentPlayerId);
+            console.log("Game phase:", currentGameState?.currentPhase);
+            
+            if (socket && currentGameState && myPlayerId === currentGameState.currentPlayerId && currentGameState.currentPhase === 'rolling_die') {
+                console.log("Emitting rollDie event to server");
+                socket.emit('rollDie');
+                
+                // Add a visual indicator that the dice is rolling
+                const rollingMsg = document.createElement('div');
+                rollingMsg.innerHTML = 'Rolling...';
+                rollingMsg.style.fontSize = '1.5em';
+                rollingMsg.style.fontWeight = 'bold';
+                rollingMsg.style.margin = '10px';
+                rollingMsg.style.color = 'white';
+                dom.drawnCardContainer.appendChild(rollingMsg);
+                
+                // Disable the button to prevent multiple clicks
+                dom.rollDiceButton.disabled = true;
+            } else {
+                console.log("Conditions not met for roll die:", {
+                    hasSocket: !!socket,
+                    hasGameState: !!currentGameState,
+                    isMyTurn: myPlayerId === currentGameState?.currentPlayerId,
+                    isRollingPhase: currentGameState?.currentPhase === 'rolling_die'
+                });
+            }
+        };
+        
+        dom.playAgainButton.onclick = () => {
+            dom.gameOverModal.style.display = 'none';
+            dom.roomSetupModal.style.display = 'flex';
+            dom.gameBoard.style.display = 'none';
+            if (socket) {
+                socket.disconnect();
+            }
+            
+            // Reset game state
+            currentGameState = null;
+            myPlayerId = null;
+            roomId = '';
+            playerName = '';
+            connectedPlayers = [];
+        };
+        
+        initRoomSetup();
+    </script>
+</body>
+</html>
