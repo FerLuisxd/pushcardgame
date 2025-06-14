@@ -271,6 +271,57 @@
             margin: 10px 0;
         }
         #final-scores { padding: 0; }
+        
+        /* Color Selection Modal */
+        .color-options {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+        
+        .color-button {
+            width: 80px;
+            height: 80px;
+            border-radius: 10px;
+            border: 3px solid white;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-weight: bold;
+            font-size: 1.2em;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+        }
+        
+        .color-button:hover {
+            transform: scale(1.1);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.4);
+        }
+        
+        .color-button.red { background-color: var(--c-red); color: white; }
+        .color-button.blue { background-color: var(--c-blue); color: white; }
+        .color-button.green { background-color: var(--c-green); color: white; }
+        .color-button.yellow { background-color: var(--c-yellow); color: var(--c-dark); }
+        .color-button.purple { background-color: var(--c-purple); color: white; }
+        
+        .color-count {
+            position: absolute;
+            top: -10px;
+            right: -10px;
+            background: white;
+            color: var(--c-dark);
+            border-radius: 50%;
+            width: 25px;
+            height: 25px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
     </style>
 </head>
 <body>
@@ -333,13 +384,22 @@
         </div>
     </div>
 
+    <!-- Color Selection Modal -->
+    <div id="color-select-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content">
+            <h2>Select a Color to Save</h2>
+            <p>Choose a color to save from your bank:</p>
+            <div id="color-options" class="color-options"></div>
+            <button id="cancel-save-button" class="modal-button" style="background-color: var(--c-grey);">Cancel</button>
+        </div>
+    </div>
 
     <script>
         // const COLORS = ['red', 'blue'];
         const COLORS = ['red', 'blue', 'green', 'yellow', 'purple'];
         const VALUES = [1, 2, 3, 4, 5, 6];
-        const NUM_COPIES_PER_CARD = 3;
-        const NUM_ROLL_CARDS = 18;
+        const NUM_COPIES_PER_CARD = 2; // 3
+        const NUM_ROLL_CARDS = 10; // 18
         // const NUM_ROLL_CARDS = 60;
         const MAX_COLUMNS = 3;
 
@@ -361,13 +421,17 @@
             gameOverModal: document.getElementById('game-over-modal'),
             finalScores: document.getElementById('final-scores'),
             playAgainButton: document.getElementById('play-again-button'),
+            // Color Selection Modal
+            colorSelectModal: document.getElementById('color-select-modal'),
+            colorOptions: document.getElementById('color-options'),
+            cancelSaveButton: document.getElementById('cancel-save-button'),
         };
 
         let game = null;
 
         class PushGame {
             constructor(playerNames) {
-                this.players = playerNames.map(name => ({ name, score: 0, bank: [], element: null }));
+                this.players = playerNames.map(name => ({ name, score: 0, bank: [], savedCards:[],element: null }));
                 this.deck = this._createDeck();
                 this.currentPlayerIndex = 0;
                 this.turnColumns = [];
@@ -406,9 +470,14 @@
                 this.gameState = 'turn_start';
                 this.updateUI();
                 this.displayMessage(`It's <span class="message-highlight">${this.getCurrentPlayer().name}</span>'s turn. Push or Stop?`);
+                dom.stopButton.textContent = 'Bank a color';
+                dom.stopButton.style.backgroundColor = 'var(--c-yellow)';
+
             }
             
             push() {
+                dom.stopButton.textContent = 'Stop';
+                dom.stopButton.style.backgroundColor = 'var(--c-red)';
                 if (this.deck.length === 0) {
                     this.displayMessage("The deck is empty!");
                     this.stop();
@@ -424,9 +493,77 @@
                 this.promptForPlacement(card);
             }
 
+            saveColor() {
+                // Show the color selection modal
+                const player = this.getCurrentPlayer();
+                
+                // Get unique colors from player's bank
+                const colorCounts = {};
+                player.bank.forEach(card => {
+                    if (!colorCounts[card.color]) {
+                        colorCounts[card.color] = 0;
+                    }
+                    colorCounts[card.color]++;
+                });
+                
+                // Create color buttons
+                dom.colorOptions.innerHTML = '';
+                Object.keys(colorCounts).forEach(color => {
+                    const colorButton = document.createElement('div');
+                    colorButton.className = `color-button ${color}`;
+                    colorButton.style.position = 'relative';
+                    colorButton.innerHTML = `
+                        ${color.charAt(0).toUpperCase() + color.slice(1)}
+                        <span class="color-count">${colorCounts[color]}</span>
+                    `;
+                    
+                    // Add click event to select this color
+                    colorButton.onclick = () => {
+                        this.processColorSelection(color);
+                    };
+                    
+                    dom.colorOptions.appendChild(colorButton);
+                });
+                
+                // Show the modal
+                dom.colorSelectModal.style.display = 'flex';
+            }
+            
+            processColorSelection(selectedColor) {
+                dom.pushButton.disabled = true;
+                dom.stopButton.disabled = true;
+                // Hide the modal
+                dom.colorSelectModal.style.display = 'none';
+                
+                const player = this.getCurrentPlayer();
+                const cardsToSave = player.bank.filter(c => c.color === selectedColor);
+                
+                if (cardsToSave.length === 0) {
+                    this.displayMessage(`No ${selectedColor} cards to save.`);
+                    return;
+                }
+                
+                player.bank = player.bank.filter(c => c.color !== selectedColor); // Remove those cards from the bank
+                player.savedCards.push(...cardsToSave);
+                
+                this.displayMessage(`Saved ${cardsToSave.length} ${selectedColor} cards!`);
+                this.updateUI();
+                
+                setTimeout(() => {
+                    this.endTurn();
+                }, 1500);
+            }
+
             stop() {
                 if (this.turnColumns.length === 0) {
-                    this.endTurn();
+                    const player = this.getCurrentPlayer();
+                    if(player.bank.length > 0){
+                        this.saveColor();
+                    }
+                    else{
+                        // If for some reason current player does not want to go first? (TODO)
+                        this.endTurn();
+                    }
                     return;
                 }
                 this.gameState = 'banking';
@@ -508,7 +645,8 @@
 
             promptForPlacement(card) {
                 this.gameState = 'placing_card';
-                this.displayMessage(`Place the ${card.color} ${card.value}. Click a valid column.`);
+                const message = card.type === 'roll' ?  `Place the DICE 💀. Click a valid column.`: `Place the ${card.color} ${card.value}. Click a valid column.`;
+                this.displayMessage(message);
                 this.updateUI(card); // Pass the card to highlight valid placement options
             }
             
@@ -596,7 +734,9 @@
                 
                 // Calculate final scores
                 this.players.forEach(p => {
-                    p.score = p.bank.reduce((sum, card) => sum + card.value, 0);
+                    const bankScore = p.bank.reduce((sum, card) => sum + card.value, 0);
+                    const savedScore = p.savedCards.reduce((sum, card) => sum + card.value, 0);
+                    p.score = bankScore + savedScore;
                 });
 
                 this.players.sort((a, b) => b.score - a.score);
@@ -631,7 +771,9 @@
                     }
                     p.element = playerDiv;
                     
-                    const score = p.bank.reduce((sum, card) => sum + card.value, 0);
+                    const bankScore = p.bank.reduce((sum, card) => sum + card.value, 0);
+                    const savedScore = p.savedCards.reduce((sum, card) => sum + card.value, 0);
+                    const score = bankScore + savedScore;
                     
                     playerDiv.innerHTML = `
                         <div class="player-name">${p.name}</div>
@@ -730,6 +872,10 @@
             dom.pushButton.onclick = () => game.push();
             dom.stopButton.onclick = () => game.stop();
             dom.rollButton.onclick = () => game.rollDice();
+            dom.cancelSaveButton.onclick = () => {
+                dom.colorSelectModal.style.display = 'none';
+                // game.endTurn();
+            };
         }
 
         initSetup();
