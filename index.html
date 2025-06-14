@@ -122,9 +122,13 @@
         }
         
         .player-bank-cards .card {
-            width: 15px;
-            height: 22px;
-            font-size: 0; /* Hide number on small bank cards */
+            width: 20px;
+            height: 30px;
+            font-size: 0.8em;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-weight: bold;
         }
 
         /* --- Deck & Turn Area --- */
@@ -779,8 +783,14 @@
                         <div class="player-name">${p.name}</div>
                         <div>Score: ${score}</div>
                         <div class="player-bank-cards">
-                            ${p.bank.map(card => `<div class="card ${card.color}"></div>`).join('')}
+                            ${p.bank.map(card => `<div class="card ${card.color}" title="${card.color} ${card.value}">${card.value}</div>`).join('')}
                         </div>
+                        ${p.savedCards.length > 0 ? `
+                        <div style="margin-top: 5px; font-size: 0.9em;">Saved Cards:</div>
+                        <div class="player-bank-cards">
+                            ${p.savedCards.map(card => `<div class="card ${card.color}" title="${card.color} ${card.value}">${card.type === 'roll' ? '🎲' : card.value}</div>`).join('')}
+                        </div>
+                        ` : ''}
                     `;
                     dom.playerList.appendChild(playerDiv);
                 });
