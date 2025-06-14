@@ -326,6 +326,16 @@
             font-weight: bold;
             box-shadow: 0 2px 4px rgba(0,0,0,0.3);
         }
+        
+        /* Flipped Card Animation */
+        @keyframes flipCard {
+            0% { transform: translateY(-50px) scale(0.8); opacity: 0; }
+            100% { transform: translateY(0) scale(1); opacity: 1; }
+        }
+        
+        #flipped-card {
+            animation: flipCard 0.25s ease-out;
+        }
     </style>
 </head>
 <body>
@@ -336,12 +346,16 @@
         </div>
 
         <div id="deck-area" class="game-section">
+            <div id="deck-count"></div>
             <div id="deck-pile">
                 <div class="card card-back"></div>
                 <div class="card card-back"></div>
                 <div class="card card-back"></div>
             </div>
-            <div id="deck-count"></div>
+            <div id="flipped-card-container" style="margin-top: 20px; display: none;">
+                <div>Flipped Card:</div>
+                <div id="flipped-card" class="card"></div>
+            </div>
         </div>
 
         <div id="turn-area" class="game-section">
@@ -402,8 +416,8 @@
         // const COLORS = ['red', 'blue'];
         const COLORS = ['red', 'blue', 'green', 'yellow', 'purple'];
         const VALUES = [1, 2, 3, 4, 5, 6];
-        const NUM_COPIES_PER_CARD = 2; // 3
-        const NUM_ROLL_CARDS = 10; // 18
+        const NUM_COPIES_PER_CARD = 3; // 3
+        const NUM_ROLL_CARDS = 18; // 18
         // const NUM_ROLL_CARDS = 60;
         const MAX_COLUMNS = 3;
 
@@ -412,6 +426,8 @@
             gameBoard: document.getElementById('game-board'),
             playerList: document.getElementById('player-list'),
             deckCount: document.getElementById('deck-count'),
+            flippedCardContainer: document.getElementById('flipped-card-container'),
+            flippedCard: document.getElementById('flipped-card'),
             turnColumns: document.getElementById('turn-columns'),
             pushButton: document.getElementById('push-button'),
             stopButton: document.getElementById('stop-button'),
@@ -476,7 +492,9 @@
                 this.displayMessage(`It's <span class="message-highlight">${this.getCurrentPlayer().name}</span>'s turn. Push or Stop?`);
                 dom.stopButton.textContent = 'Bank a color';
                 dom.stopButton.style.backgroundColor = 'var(--c-yellow)';
-
+                
+                // Hide the flipped card at the start of a new turn
+                dom.flippedCardContainer.style.display = 'none';
             }
             
             push() {
@@ -489,12 +507,24 @@
                 }
                 
                 const card = this.deck.pop();
+                
+                // Display the flipped card
+                this.displayFlippedCard(card);
+                
                 if (this._isBust(card)) {
                     this.handleBust();
                     return;
                 }
 
                 this.promptForPlacement(card);
+            }
+            
+            displayFlippedCard(card) {
+                // Update the flipped card display
+                dom.flippedCard.className = `card ${card.color}`;
+                dom.flippedCard.textContent = card.type === 'roll' ? '🎲' : card.value;
+                dom.flippedCard.title = `${card.color} ${card.type === 'roll' ? 'dice' : card.value}`;
+                dom.flippedCardContainer.style.display = 'block';
             }
 
             saveColor() {
@@ -507,7 +537,7 @@
                     if (!colorCounts[card.color]) {
                         colorCounts[card.color] = 0;
                     }
-                    colorCounts[card.color]++;
+                    colorCounts[card.color]+= card.value;
                 });
                 
                 // Create color buttons
@@ -587,13 +617,15 @@
 
             // --- Card & Action Handlers ---
             rollDice() {
-                const rolledColor = COLORS[Math.floor(Math.random() * COLORS.length)];
+                const diceOptions = [...COLORS, 'grey'];
+                const rolledColor = diceOptions[Math.floor(Math.random() * diceOptions.length)];
                 this.displayMessage(`You rolled <span style="color:${rolledColor}; text-transform:uppercase;">${rolledColor}</span>! All ${rolledColor} cards are removed from your score.`);
                 
                 // Remove the rolled color cards from the player's bank
                 // const player = this.getCurrentPlayer();
                 const player = this.players[this.temporalDiceTurnPlayerIndex];
                 const removedCount = player.bank.filter(c => c.color === rolledColor).length;
+                const bankScore = player.bank.reduce((sum, card) => sum + card.value, 0);
                 player.bank = player.bank.filter(c => c.color !== rolledColor);
                 
                 // Reset the roll state
@@ -607,7 +639,7 @@
                 
                 setTimeout(() => {
                     if (removedCount > 0) {
-                        this.displayMessage(`You lost ${removedCount} ${rolledColor} card${removedCount > 1 ? 's' : ''} from your score!`);
+                        this.displayMessage(`You rolled ${rolledColor}! You lost ${bankScore} from your score!`);
                     } else {
                         this.displayMessage(`Lucky! You had no ${rolledColor} cards in your score.`);
                     }
@@ -655,6 +687,7 @@
             }
             
             placeCard(card, columnIndex) {
+                dom.flippedCardContainer.style.display = 'none';
                 if (columnIndex >= this.turnColumns.length) {
                     this.turnColumns.push([card]);
                 } else {
@@ -681,7 +714,7 @@
                 }
 
                 const player = this.players[playerIndex];
-                this.displayMessage(`<span class="message-highlight">${player.name}</span>, choose a column to bank.`);
+                this.displayMessage(`<span class="message-highlight">${player.name}</span>, choose a column.`);
                 
                 this.gameState = 'banking';
                 this.updateUI(null, availableColumns); // Highlight selectable columns for banking
@@ -785,13 +818,14 @@
                         <div class="player-bank-cards">
                             ${p.bank.map(card => `<div class="card ${card.color}" title="${card.color} ${card.value}">${card.value}</div>`).join('')}
                         </div>
-                        ${p.savedCards.length > 0 ? `
-                        <div style="margin-top: 5px; font-size: 0.9em;">Saved Cards:</div>
-                        <div class="player-bank-cards">
-                            ${p.savedCards.map(card => `<div class="card ${card.color}" title="${card.color} ${card.value}">${card.type === 'roll' ? '🎲' : card.value}</div>`).join('')}
-                        </div>
-                        ` : ''}
                     `;
+                    // To display saved cards, not for now.
+                    // ${p.savedCards.length > 0 ? `
+                    //     <div style="margin-top: 5px; font-size: 0.9em;">Saved Cards:</div>
+                    //     <div class="player-bank-cards">
+                    //         ${p.savedCards.map(card => `<div class="card ${card.color}" title="${card.color} ${card.value}">${card.type === 'roll' ? '🎲' : card.value}</div>`).join('')}
+                    //     </div>
+                    //     ` : ''}
                     dom.playerList.appendChild(playerDiv);
                 });
 
