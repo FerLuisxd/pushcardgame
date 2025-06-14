@@ -15,6 +15,7 @@
             --c-yellow: #e6c54c;
             --c-purple: #9d59a6;
             --c-grey: #a0a0a0;
+            --c-white: #ffffff;
             --c-dark: #2c2c2c;
             --c-light: #f0f0f0;
             --c-bg: #333;
@@ -115,6 +116,7 @@
         .card.yellow { background: var(--c-yellow); color: var(--c-dark); }
         .card.purple { background: var(--c-purple); color: white; }
         .card.grey   { background: var(--c-grey); color: var(--c-dark); font-size: 2.5em; }
+        .card.white  { background: var(--c-white); color: var(--c-dark); border: 2px solid var(--c-dark); }
 
         .card-back {
             background: linear-gradient(135deg, #555, #444);
@@ -310,6 +312,7 @@
         .color-button.green { background-color: var(--c-green); color: white; }
         .color-button.yellow { background-color: var(--c-yellow); color: var(--c-dark); }
         .color-button.purple { background-color: var(--c-purple); color: white; }
+        .color-button.white { background-color: var(--c-white); color: var(--c-dark); border: 2px solid var(--c-dark); }
         
         .color-count {
             position: absolute;
@@ -335,6 +338,18 @@
         
         #flipped-card {
             animation: flipCard 0.25s ease-out;
+        }
+        
+        /* Rotation animation for direction change icon */
+        @keyframes rotate {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .rotating-icon {
+            display: inline-block;
+            animation: rotate 1.5s infinite linear;
+            font-size: 1.8em;
         }
     </style>
 </head>
@@ -418,6 +433,7 @@
         const VALUES = [1, 2, 3, 4, 5, 6];
         const NUM_COPIES_PER_CARD = 3; // 3
         const NUM_ROLL_CARDS = 18; // 18
+        const NUM_ROLL_CARDS_DICE = NUM_ROLL_CARDS; // Maybe?
         // const NUM_ROLL_CARDS = 60;
         const MAX_COLUMNS = 3;
 
@@ -458,6 +474,7 @@
                 this.isGameOver = false;
                 this.gameState = 'turn_start'; // 'turn_start', 'placing_card', 'banking', 'game_over', 'rolling_dice'
                 this.selectedRollColumn = null; // To track which column with a roll card was selected
+                this.claimDirection = 1; // 1 for forward, -1 for backward
             }
 
             // --- Game Setup ---
@@ -472,6 +489,7 @@
                 }
                 for (let i = 0; i < NUM_ROLL_CARDS; i++) {
                     deck.push({ type: 'roll', color: 'grey', value: 0 });
+                    deck.push({ type: 'change-direction', color: 'white', value: -1 });
                 }
                 return this._shuffle(deck);
             }
@@ -486,6 +504,7 @@
 
             // --- Core Turn Logic ---
             startTurn() {
+                this.claimDirection = 1;
                 this.turnColumns = [];
                 this.gameState = 'turn_start';
                 this.updateUI();
@@ -522,8 +541,17 @@
             displayFlippedCard(card) {
                 // Update the flipped card display
                 dom.flippedCard.className = `card ${card.color}`;
-                dom.flippedCard.textContent = card.type === 'roll' ? '🎲' : card.value;
-                dom.flippedCard.title = `${card.color} ${card.type === 'roll' ? 'dice' : card.value}`;
+                
+                if (card.type === 'roll') {
+                    dom.flippedCard.textContent = '🎲';
+                } else if (card.type === 'change-direction') {
+                    dom.flippedCard.textContent = '🔄';
+                    // dom.flippedCard.innerHTML = '<span class="rotating-icon">🔄</span>';
+                } else {
+                    dom.flippedCard.textContent = card.value;
+                }
+                
+                dom.flippedCard.title = `${card.color} ${card.type === 'roll' ? 'dice' : card.type === 'change-direction' ? 'change direction' : card.value}`;
                 dom.flippedCardContainer.style.display = 'block';
             }
 
@@ -609,7 +637,8 @@
                     this.endGame();
                     return;
                 }
-                this.currentPlayerIndex = (this.currentPlayerIndex + 1) % this.players.length;
+                // THIS DO NOT CHANGE, IT SHOULD CONTINUE TO THE NEXT PLAYER NO MATTER WHAT
+                this.currentPlayerIndex = this._mod(this.currentPlayerIndex + 1, this.players.length);
                 this.turnColumns = [];
                 this.isBurst = false
                 this.startTurn();
@@ -617,7 +646,7 @@
 
             // --- Card & Action Handlers ---
             rollDice() {
-                const diceOptions = [...COLORS, 'grey'];
+                const diceOptions = [...COLORS, 'black'];
                 const rolledColor = diceOptions[Math.floor(Math.random() * diceOptions.length)];
                 this.displayMessage(`You rolled <span style="color:${rolledColor}; text-transform:uppercase;">${rolledColor}</span>! All ${rolledColor} cards are removed from your score.`);
                 
@@ -646,8 +675,9 @@
                     
                     // Continue with banking for the next player if there are remaining columns
                     setTimeout(() => {
-                        const nextPlayerIndex = (this.temporalDiceTurnPlayerIndex + 1) % this.players.length;
-                        this.nextPlayerPickUp(nextPlayerIndex)
+                        const nextPlayerInCycle = this._mod(this.temporalDiceTurnPlayerIndex + this.claimDirection, this.players.length);
+                        console.log('nextPlayerInCycle', nextPlayerInCycle, this.temporalDiceTurnPlayerIndex, this.claimDirection)
+                        this.nextPlayerPickUp(nextPlayerInCycle)
                     }, 1000);
                 }, 1500);
             }
@@ -681,12 +711,19 @@
 
             promptForPlacement(card) {
                 this.gameState = 'placing_card';
-                const message = card.type === 'roll' ?  `Place the DICE 💀. Click a valid column.`: `Place the ${card.color} ${card.value}. Click a valid column.`;
+                const message = card.type === 'roll' ?  `Place the DICE 💀. Click a valid column.`: card.type === 'change-direction' ? `Change direction 🔄. Click a valid column.`: `Place the ${card.color} ${card.value}. Click a valid column.`;
                 this.displayMessage(message);
                 this.updateUI(card); // Pass the card to highlight valid placement options
             }
             
             placeCard(card, columnIndex) {
+                if(card.type === 'change-direction'){
+                    this.claimDirection = -this.claimDirection;
+                    console.log('claimDirection changed', this.claimDirection)
+                    this.displayMessage(`Direction changed! You will now ${this.claimDirection === 1 ? 'go forward ➡️' : 'go backward ⬅️'}.`);
+                    // Could return if I didn't want it to be a placeable card but for now this.
+                    // return;
+                }
                 dom.flippedCardContainer.style.display = 'none';
                 if (columnIndex >= this.turnColumns.length) {
                     this.turnColumns.push([card]);
@@ -703,7 +740,7 @@
                 console.log('in prompt player to bank', playerIndex, availableColumns)
                 if (availableColumns.length === 0) {
                     // All columns taken, move to next player in turn cycle
-                    const nextPlayerInCycle = (playerIndex + 1) % this.players.length;
+                    const nextPlayerInCycle = this._mod(playerIndex + this.claimDirection, this.players.length);
                     console.log('should endTurn?',nextPlayerInCycle, playerIndex, this.currentPlayerIndex)
                     if (nextPlayerInCycle === this.currentPlayerIndex) {
                         this.endTurn(); // Full cycle complete
@@ -722,7 +759,7 @@
             
             playerBanksColumn(playerIndex, chosenColumn, availableColumns) {
                 // First, add all non-roll cards to the player's bank
-                const nonRollCards = chosenColumn.filter(card => card.type !== 'roll');
+                const nonRollCards = chosenColumn.filter(card => card.type !== 'roll' && card.type !== 'change-direction');
                 this.players[playerIndex].bank.push(...nonRollCards);
                 
                 // Check if the column contains a roll card
@@ -740,7 +777,7 @@
                     return;
                 }
                 
-                const nextPlayerInCycle = (playerIndex + 1) % this.players.length;
+                const nextPlayerInCycle = this._mod(playerIndex + this.claimDirection, this.players.length);
                 if(nextPlayerInCycle === this.currentPlayerIndex || remainingColumns.length === 0){
                     this.endTurn(); // Full cycle complete or no columns left
                 } else {
@@ -793,6 +830,11 @@
                 return this.players[this.currentPlayerIndex];
             }
             
+            // Helper method for proper modulo with negative numbers
+            _mod(n, m) {
+                return ((n % m) + m) % m;
+            }
+            
             displayMessage(html) {
                 dom.messageBox.innerHTML = html;
             }
@@ -842,10 +884,7 @@
                 const columnsToShow = bankableColumns || this.turnColumns
                 columnsToShow.forEach((columnData, index) => {
                     const columnDiv = document.createElement('div');
-                    columnDiv.className = 'column';
-
-                    console.log('in columns to show', this.gameState, columnsToShow)
-                    
+                    columnDiv.className = 'column';                    
                     // Logic for card placement highlighting
                     if (this.gameState === 'placing_card' && this._canPlaceInColumn(cardToPlace, columnData)) {
                         columnDiv.classList.add('selectable');
@@ -861,7 +900,16 @@
                     columnData.forEach(card => {
                         const cardDiv = document.createElement('div');
                         cardDiv.className = `card ${card.color}`;
-                        cardDiv.textContent = card.type === 'roll' ? '🎲' : card.value;
+                        
+                        if (card.type === 'roll') {
+                            cardDiv.textContent = '🎲';
+                        } else if (card.type === 'change-direction') {
+                            cardDiv.textContent = '🔄';
+                            // cardDiv.innerHTML = '<span class="rotating-icon">🔄</span>';
+                        } else {
+                            cardDiv.textContent = card.value;
+                        }
+                        
                         columnDiv.appendChild(cardDiv);
                     });
                     dom.turnColumns.appendChild(columnDiv);
